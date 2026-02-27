@@ -1,47 +1,29 @@
 #!/bin/bash
 
-# Import n8n workflows from JSON files using Docker CLI
-# Usage: ./scripts/import_workflows.sh
+# --- CONFIGURATION ---
+CONTAINER_NAME="n8n"                 # Your Docker container name
+IMPORT_DIR="./imports"               # Where you upload your JSONs
+DOCKER_PATH="/tmp/n8n_import"        # Internal container mapping
 
-set -e
+echo "🚀 Starting n8n Seamless Import..."
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-IMPORTS_DIR="$PROJECT_DIR/imports"
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-echo -e "${YELLOW}Importing workflows to n8n container...${NC}"
-
-# Check if n8n container is running
-if ! docker compose ps | grep -q n8n; then
-    echo -e "${RED}Error: n8n container is not running${NC}"
-    exit 1
-fi
-
-# Check if imports directory exists
-if [ ! -d "$IMPORTS_DIR" ]; then
-    echo -e "${YELLOW}Creating imports directory...${NC}"
-    mkdir -p "$IMPORTS_DIR"
-fi
-
-# Count workflows
-WORKFLOW_COUNT=$(find "$IMPORTS_DIR" -name "*.json" -type f | wc -l)
-echo -e "${YELLOW}Found $WORKFLOW_COUNT workflow(s) to import${NC}"
-
-if [ "$WORKFLOW_COUNT" -eq 0 ]; then
-    echo -e "${YELLOW}No workflow files found in $IMPORTS_DIR${NC}"
-    echo -e "${YELLOW}Add workflow JSON files to ./imports/ directory${NC}"
+# 1. Check if the import directory has files
+if [ -z "$(ls -A $IMPORT_DIR/*.json 2>/dev/null)" ]; then
+    echo "ℹ️  Check: No .json files found in $IMPORT_DIR. Skipping."
     exit 0
 fi
 
-# Import all workflows using n8n CLI
-# The imports directory is mounted to /tmp/n8n_import in the container
-docker exec -it -u node n8n n8n import:workflow --separate --input=/tmp/n8n_import
+# 2. Run the n8n CLI command via Docker
+echo "📦 Importing workflows into n8n..."
+docker exec -u node $CONTAINER_NAME n8n import:workflow --separate --input=$DOCKER_PATH
 
-echo -e "${GREEN}Import complete!${NC}"
-echo -e "${YELLOW}Note: Imported workflows are inactive by default. Activate them in n8n UI.${NC}"
+# 3. Check if the command succeeded
+if [ $? -eq 0 ]; then
+    echo "✅ Success! Workflows imported."
+    # 4. Cleanup (Security: Remove JSONs after import)
+    rm $IMPORT_DIR/*.json
+    echo "🧹 Cleanup: JSON files removed for security."
+else
+    echo "❌ Error: Import failed. Keeping files for debugging."
+    exit 1
+fi
