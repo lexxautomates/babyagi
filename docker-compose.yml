@@ -14,6 +14,18 @@ services:
       - DOMAIN=${DOMAIN}
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
 
+  # Playwright browser automation service
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.50.1-noble
+    restart: unless-stopped
+    environment:
+      - DISPLAY=:99
+    ports:
+      - "9222:9222"  # Chrome DevTools Protocol
+    command: ["/bin/bash", "-c", "Xvfb :99 -screen 0 1920x1080x24 && chromium --remote-debugging-port=9222 --remote-debugging-address=0.0.0.0 --no-sandbox --disable-gpu --disable-dev-shm-usage"]
+    volumes:
+      - playwright_data:/home/pwuser
+
   n8n:
     image: n8nio/n8n:latest
     restart: always
@@ -40,3 +52,4 @@ volumes:
   n8n_data:
   caddy_data:
   caddy_config:
+  playwright_data:

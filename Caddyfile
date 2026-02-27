@@ -1,9 +1,17 @@
+# n8n.lexxautomates.com
+# Caddy automatically obtains Let's Encrypt certificates via HTTP-01 challenge
+# Ensure ports 80 and 443 are publicly accessible
+
 {$SUBDOMAIN}.{$DOMAIN} {
+    # Explicitly use Let's Encrypt (production issuer)
+    # This is the default, but being explicit for clarity
+    tls {
+        issuer acme
+    }
+    
     reverse_proxy n8n:5678
     
     encode gzip
-    
-    tls internal
     
     header {
         X-Frame-Options "SAMEORIGIN"
