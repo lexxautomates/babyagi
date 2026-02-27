@@ -1,0 +1,217 @@
+{
+  "name": "BabyAGI-Telegram-Relay",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "event": ["message"],
+        "additionalFields": {
+          "polling": true
+        }
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 2.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "auth-check",
+              "leftValue": "={{ $json.message.from.id }}",
+              "rightValue": "7931609486",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "user-auth-check",
+      "name": "Check Authorized User",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "❌ Access Denied. You are not authorized to use this bot.",
+        "additionalFields": {}
+      },
+      "id": "access-denied",
+      "name": "Send Access Denied",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [600, 450]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare request for BabyAGI\nconst message = $('Telegram Trigger').item.json.message;\nconst userText = message.text || '';\nconst chatId = message.chat.id;\nconst userId = message.from.id;\nconst userName = message.from.first_name || 'User';\n\n// Check if it's a command\nconst isCommand = userText.startsWith('/');\nlet endpoint = 'http://31.220.20.251:8080/api/chat';\nlet payload = {};\n\nif (userText.startsWith('/task ')) {\n  endpoint = 'http://31.220.20.251:8080/api/task';\n  payload = {\n    objective: userText.replace('/task ', '').trim(),\n    user_id: userId\n  };\n} else if (userText.startsWith('/functions')) {\n  endpoint = 'http://31.220.20.251:8080/api/functions';\n  payload = { action: 'list' };\n} else if (userText === '/start' || userText === '/help') {\n  return {\n    json: {\n      response: `🤖 *BabyAGI Telegram Bot*\\n\\n*Commands:*\\n/start - Show this message\\n/help - Show help\\n/functions - List available functions\\n/task <objective> - Execute a task\\n<message> - Chat with BabyAGI\\n\\nJust send any message to interact!`,\n      chat_id: chatId,\n      direct_response: true\n    }\n  };\n} else {\n  payload = {\n    message: userText,\n    user_id: userId,\n    user_name: userName,\n    chat_id: chatId\n  };\n}\n\nreturn {\n  json: {\n    endpoint: endpoint,\n    payload: payload,\n    chat_id: chatId,\n    user_text: userText,\n    direct_response: false\n  }\n};"
+      },
+      "id": "prepare-babyagi-request",
+      "name": "Prepare BabyAGI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "direct-check",
+              "leftValue": "={{ $json.direct_response }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-direct-response",
+      "name": "Check Direct Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.endpoint }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "call-babyagi",
+      "name": "Call BabyAGI API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format BabyAGI response for Telegram\nconst babyagiResponse = $input.all()[0].json;\nconst chatId = $('Prepare BabyAGI Request').item.json.chat_id;\n\nlet responseText = '';\n\nif (babyagiResponse.response) {\n  responseText = babyagiResponse.response;\n} else if (babyagiResponse.result) {\n  responseText = babyagiResponse.result;\n} else if (babyagiResponse.output) {\n  responseText = babyagiResponse.output;\n} else if (babyagiResponse.error) {\n  responseText = `❌ Error: ${babyagiResponse.error}`;\n} else {\n  responseText = JSON.stringify(babyagiResponse, null, 2);\n}\n\nif (responseText.length > 4000) {\n  responseText = responseText.substring(0, 3997) + '...';\n}\n\nreturn {\n  json: {\n    chat_id: chatId,\n    text: responseText,\n    parse_mode: 'Markdown'\n  }\n};"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-telegram-response",
+      "name": "Send Telegram Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Prepare BabyAGI Request').item.json.chat_id }}",
+        "text": "={{ $('Prepare BabyAGI Request').item.json.response }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "direct-response-send",
+      "name": "Send Direct Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {},
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [200, 500]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "7931609486",
+        "text": "=🚨 *BabyAGI Error*\\n\\n{{ $json.error.message }}\\n\\nWorkflow: {{ $json.workflow.name }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-error-notification",
+      "name": "Send Error Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [400, 500]
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{"node": "Check Authorized User", "type": "main", "index": 0}]]
+    },
+    "Check Authorized User": {
+      "main": [
+        [{"node": "Prepare BabyAGI Request", "type": "main", "index": 0}],
+        [{"node": "Send Access Denied", "type": "main", "index": 0}]
+      ]
+    },
+    "Prepare BabyAGI Request": {
+      "main": [[{"node": "Check Direct Response", "type": "main", "index": 0}]]
+    },
+    "Check Direct Response": {
+      "main": [
+        [{"node": "Call BabyAGI API", "type": "main", "index": 0}],
+        [{"node": "Send Direct Response", "type": "main", "index": 0}]
+      ]
+    },
+    "Call BabyAGI API": {
+      "main": [[{"node": "Format Response", "type": "main", "index": 0}]]
+    },
+    "Format Response": {
+      "main": [[{"node": "Send Telegram Response", "type": "main", "index": 0}]]
+    },
+    "Error Handler": {
+      "main": [[{"node": "Send Error Notification", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "America/New_York",
+    "retryOnFail": true
+  }
+}
