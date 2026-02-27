@@ -1,0 +1,362 @@
+{
+  "name": "CEO-MCP-Multi-Server-Telegram-VPS31.220.20.251-Secure",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "1-cron-9am-secure",
+      "name": "Daily 9AM Secure Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1.9,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "valid-user-check",
+              "leftValue": "={{ $('Telegram bottombih1bot Relay').item.json.message.from.id }}",
+              "rightValue": "7931609486",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2-user-security-gate",
+      "name": "User Security Gate (Whitelist)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "updates": [
+          {
+            "update": [
+              {
+                "value": "❌ **Access Denied**. Unauthorized user."
+              }
+            ]
+          }
+        ],
+        "chatId": "={{ $('Telegram bottombih1bot Relay').item.json.message.chat.id }}",
+        "additionalFields": {}
+      },
+      "id": "3-access-denied",
+      "name": "Access Denied Response",
+      "type": "@n8n/n8n-nodes-langchain.telegram",
+      "typeVersion": 1,
+      "position": [600, 450],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bottombih1bot",
+          "name": "bottombih1bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "llama3.2:latest",
+        "options": {
+          "baseURL": "http://31.220.20.251:11434/v1",
+          "timeout": 30000,
+          "serverSentEvents": true,
+          "maxRetries": 3
+        }
+      },
+      "id": "4-ollama-vps-secure",
+      "name": "Ollama VPS 31.220.20.251:11434",
+      "type": "n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "agent": "toolsAgent",
+        "prompt": "**CEO ORCHESTRATOR**\\n\\n**SOUL**: Ruthless efficiency. Self-funding AI empires.\\n**IDENTITY**: Florida solo founder (Pompano Beach).\\n**ROLE**: Creates autonomous agents via MCP servers.\\n\\n**SECURITY**: Validate all inputs. Rate limit heavy tools.\\n\\n**MCP SERVERS** (production):\\n{{ $('MCP Secure Registry').item.json.mcp_servers | replace('\"', '\\\\\"') }}\\n\\n**USER**: {{ $('Telegram bottombih1bot Relay').item.json.message.text }}\\n\\n**PROTOCOL**:\\n1. supabase-agent.get_tasks → daily tasks\\n2. web-research.opportunity_scout → POD/directories/trading\\n3. 'create [agent]' → local-tools.shell_exec → claude create-agent\\n4. ALWAYS end: supabase-agent.log_interaction\\n\\n**ERROR HANDLING**: If tool fails, say 'Tool unavailable, manual action needed'\\n\\n**OUTPUT**: Telegram Markdown. JSON at end if structured.",
+        "options": {
+          "memory": true,
+          "returnIntermediateSteps": true,
+          "maxIterations": 5
+        }
+      },
+      "id": "5-ceo-mcp-production",
+      "name": "CEO MCP Production Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.4,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "updates": [
+          {
+            "update": [
+              {
+                "value": "={{ $('CEO MCP Production Agent').item.json.output || '⚠️ Processing... Standby.' }}",
+                "parseMode": "Markdown"
+              }
+            ]
+          }
+        ],
+        "chatId": "={{ $('Telegram bottombih1bot Relay').item.json.message.chat.id }}",
+        "additionalFields": {}
+      },
+      "id": "6-telegram-ceo-response",
+      "name": "CEO → Telegram Response",
+      "type": "@n8n/n8n-nodes-langchain.telegram",
+      "typeVersion": 1,
+      "position": [1400, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bottombih1bot",
+          "name": "bottombih1bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "agent_interactions",
+        "columns": "user_id,timestamp,input,output,status,mcp_servers,tools_used,errors",
+        "additionalFields": {
+          "returnAll": true
+        }
+      },
+      "id": "7-supabase-audit-log",
+      "name": "Supabase Audit + Error Log",
+      "type": "n8n-nodes-base.supabase1",
+      "typeVersion": 1.1,
+      "position": [1600, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-free-tier",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// PRODUCTION MCP MULTI‑SERVER REGISTRY + SECURITY\n\n// SECURITY: Rate limiting, input validation\nconst rateLimit = {\n  userRequests: {},\n  check: (userId) => {\n    const now = Date.now();\n    if (!rateLimit.userRequests[userId]) rateLimit.userRequests[userId] = [];\n    rateLimit.userRequests[userId] = rateLimit.userRequests[userId].filter(t => now - t < 60000);\n    if (rateLimit.userRequests[userId].length > 10) {\n      throw new Error('Rate limited: 10/min max');\n    }\n    rateLimit.userRequests[userId].push(now);\n  }\n};\n\ntry {\n  // SECURITY: Validate authorized user\n  const userId = $('Telegram bottombih1bot Relay').item.json.message.from.id;\n  const authorizedUsers = [7931609486]; // YOUR TELEGRAM ID HERE\n  if (!authorizedUsers.includes(Number(userId))) {\n    throw new Error('Unauthorized user');\n  }\n\n  rateLimit.check(userId);\n\n  // PRODUCTION MCP SERVERS\n  const mcpServers = [\n    {\n      \"name\": \"local-tools\",\n      \"baseUrl\": \"http://31.220.20.251:8765\",\n      \"description\": \"Local MCP: shell_exec (Claude CLI), filesystem, http\",\n      \"rateLimit\": \"5/min\"\n    },\n    {\n      \"name\": \"supabase-agent\",\n      \"baseUrl\": \"http://31.220.20.251:8770\",\n      \"description\": \"Supabase MCP: tasks, finance, memory, POD opportunities\",\n      \"rateLimit\": \"20/min\"\n    },\n    {\n      \"name\": \"web-research\",\n      \"baseUrl\": \"http://31.220.20.251:8780\",\n      \"description\": \"Web MCP: reddit_scrape, youtube_search, news_api\",\n      \"rateLimit\": \"10/min\"\n    },\n    {\n      \"name\": \"crypto-tools\",\n      \"baseUrl\": \"http://31.220.20.251:8790\",\n      \"description\": \"Crypto MCP: binance, tradingview, portfolio\",\n      \"rateLimit\": \"15/min\"\n    }\n  ];\n\n  const mcpTools = {\n    'local-tools': ['shell_exec', 'fs_read', 'fs_write'],\n    'supabase-agent': ['get_tasks', 'get_finance', 'log_interaction', 'update_task'],\n    'web-research': ['search_web', 'scrape_reddit', 'youtube_trends'],\n    'crypto-tools': ['binance_price', 'portfolio_status']\n  };\n\n  return {\n    mcp_servers: mcpServers,\n    mcp_tools: mcpTools,\n    user_id: userId,\n    user_name: $('Telegram bottombih1bot Relay').item.json.message.from.first_name,\n    security_status: 'PASS',\n    timestamp: new Date().toISOString()\n  };\n} catch (error) {\n  return {\n    error: error.message,\n    security_status: 'FAIL',\n    timestamp: new Date().toISOString()\n  };\n}"
+      },
+      "id": "8-mcp-secure-registry",
+      "name": "MCP Secure Registry (VPS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "event": [
+          "message"
+        ],
+        "additionalFields": {
+          "polling": true
+        }
+      },
+      "id": "9-telegram-bottombih1bot",
+      "name": "Telegram bottombih1bot Relay",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 2.2,
+      "position": [40, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bottombih1bot",
+          "name": "bottombih1bot: 8603766271:AAGSfwwlGD2nBpd28UMd1FxMIlkub-BMdjY"
+        }
+      },
+      "webhookId": "bottombih1bot-production"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "10-error-handler",
+      "name": "Global Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [1800, 100]
+    },
+    {
+      "parameters": {
+        "updates": [
+          {
+            "update": [
+              {
+                "value": "=🚨 **CEO ERROR**: {{ $('Global Error Handler').item.json.error.message }}\n\n**Timestamp**: {{ $('Global Error Handler').item.json.timestamp }}\n\nManual intervention required."
+              }
+            ]
+          }
+        ],
+        "chatId": "7931609486",
+        "additionalFields": {}
+      },
+      "id": "11-error-notification",
+      "name": "Error → Telegram Alert",
+      "type": "@n8n/n8n-nodes-langchain.telegram",
+      "typeVersion": 1,
+      "position": [2000, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bottombih1bot",
+          "name": "bottombih1bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 9AM Secure Cron": {
+      "main": [
+        [
+          {
+            "node": "9-telegram-bottombih1bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram bottombih1bot Relay": {
+      "main": [
+        [
+          {
+            "node": "2-user-security-gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2-user-security-gate": {
+      "main": [
+        [
+          {
+            "node": "8-mcp-secure-registry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "3-access-denied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8-mcp-secure-registry": {
+      "main": [
+        [
+          {
+            "node": "4-ollama-vps-secure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4-ollama-vps-secure": {
+      "main": [
+        [
+          {
+            "node": "5-ceo-mcp-production",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5-ceo-mcp-production": {
+      "main": [
+        [
+          {
+            "node": "6-telegram-ceo-response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "7-supabase-audit-log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Global Error Handler": {
+      "main": [
+        [
+          {
+            "node": "11-error-notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Telegram bottombih1bot Relay": [
+      {
+        "json": {
+          "update_id": 1,
+          "message": {
+            "message_id": 1,
+            "from": {
+              "id": 7931609486,
+              "first_name": "Alexandria"
+            },
+            "chat": {
+              "id": 7931609486
+            },
+            "text": "/start"
+          }
+        }
+      }
+    ]
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "10-error-handler",
+    "timezone": "America/New_York",
+    "retryOnFail": true
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2026-02-18",
+      "updatedAt": "2026-02-18",
+      "id": "ceo-mcp-vps-production",
+      "name": "CEO MCP VPS Production"
+    }
+  ],
+  "triggerCount": 2,
+  "updatedAt": "2026-02-26T13:05:00.000Z",
+  "versionId": "3.0-vps-production-secure"
+}
