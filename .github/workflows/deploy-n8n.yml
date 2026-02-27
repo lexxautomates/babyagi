@@ -1,0 +1,51 @@
+name: Deploy n8n to VPS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docker-compose.yml'
+      - 'Caddyfile'
+      - 'workflows/**'
+      - '.env.example'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/n8n
+            
+            # Pull latest changes
+            git pull origin main
+            
+            # Copy workflow files to n8n import directory
+            cp -r workflows/*.json /opt/n8n/imports/ 2>/dev/null || true
+            
+            # Restart services
+            docker-compose pull
+            docker-compose up -d --build
+            
+            # Health check
+            sleep 10
+            curl -f https://n8n.lexxautomates.com/healthz || exit 1
+            
+      - name: Notify on success
+        if: success()
+        run: echo "✅ n8n deployed successfully to VPS"
+        
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ n8n deployment failed"
