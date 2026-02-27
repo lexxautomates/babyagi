@@ -1,0 +1,21 @@
+{$SUBDOMAIN}.{$DOMAIN} {
+    reverse_proxy n8n:5678 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+    
+    encode gzip
+    
+    tls {
+        dns cloudflare {$CLOUDFLARE_API_TOKEN}
+    }
+    
+    # Security headers
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}

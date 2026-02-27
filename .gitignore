@@ -162,3 +162,18 @@ cython_debug/
 # Custom ignores
 funztionz.db
 encryption_key.json
+
+# ===========================================
+# n8n Specific
+# ===========================================
+imports/
+ssl/
+*.pem
+*.key
+caddy_data/
+caddy_config/
+n8n_data/
+
+# Bot logs
+bot.log
+bot_error.log

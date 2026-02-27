@@ -1,33 +1,42 @@
-version: "3.8"
-
 services:
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
-    container_name: n8n
-    restart: unless-stopped
+  caddy:
+    image: caddy:latest
+    restart: always
     ports:
-      - "5678:5678"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
     environment:
-      - N8N_HOST=${N8N_HOST:-localhost}
+      - SUBDOMAIN=${SUBDOMAIN}
+      - DOMAIN=${DOMAIN}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: always
+    environment:
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN}
       - N8N_PORT=5678
-      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - N8N_PROTOCOL=https
       - NODE_ENV=production
-      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
-      - GENERIC_TIMEZONE=${TIMEZONE:-America/New_York}
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN}/
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - N8N_API_KEY=${N8N_API_KEY}
-      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
+      - N8N_SECURE_COOKIE=true
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./imports:/imports
-      - ./repo-folder/workflows:/workflows
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      - ./imports:/tmp/n8n_import:ro
+      - ./workflows:/home/node/export_dir
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   n8n_data:
-    driver: local
+  caddy_data:
+  caddy_config:
