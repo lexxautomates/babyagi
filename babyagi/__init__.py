@@ -79,6 +79,14 @@ def load_functions(pack_name_or_path):
             traceback.print_exc()
 
 
+# Key wrapper function - allows adding API keys
+def add_key_wrapper(key_name: str, key_value: str):
+    """
+    Add a secret key to the BabyAGI system.
+    Usage: babyagi.add_key_wrapper('openai_api_key', 'sk-xxx')
+    """
+    return _func_instance.add_key(key_name, key_value)
+
 def use_blueprints(app, dashboard_route='/dashboard'):
     """
     Registers the babyagi blueprints with the provided Flask app.
@@ -132,6 +140,10 @@ try:
     _func_instance.load_function_pack('default/ai_functions')
     _func_instance.load_function_pack('default/os')
     _func_instance.load_function_pack('default/function_calling_chat')
+    # Load crypto plugin
+    _func_instance.load_function_pack('plugins/crypto')
+    # Note: nca_toolkit has compatibility issues, skipping for now
+    # _func_instance.load_function_pack('plugins/nca_toolkit')
 except Exception as e:
     print(f"Error loading default function packs: {e}")
     traceback.print_exc()

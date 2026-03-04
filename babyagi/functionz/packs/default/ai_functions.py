@@ -1,16 +1,26 @@
 # packs/ai_generator.py
 
+import os
 from functionz.core.framework import func
 
 @func.register_function(
-    metadata={"description": "GPT Call function using LiteLLm"},
-    imports=["litellm"],
-    key_dependencies=["openai_api_key"]
+    metadata={"description": "LLM Call function using LiteLLM with Ollama"},
+    imports=["litellm", "os"]
 )
 def gpt_call(prompt: str) -> str:
     from litellm import completion
+    import os
+    
+    # Get Ollama configuration from environment (inside function for database storage)
+    ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+    ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.2')
+    
+    # Set Ollama API base URL
+    os.environ['OLLAMA_API_BASE'] = ollama_base_url
+    
     messages = [{"role": "user", "content": prompt}]
-    response = completion(model="gpt-4o", messages=messages)
+    # Use Ollama model via LiteLLM
+    response = completion(model=f"ollama/{ollama_model}", messages=messages)
     return response['choices'][0]['message']['content']
 
 @func.register_function(
@@ -77,29 +87,31 @@ def generate_missing_descriptions() -> None:
 
 
 @func.register_function(
-    metadata={"description": "Embeds an input using LiteLLM"},
-    imports=["litellm"],
-    key_dependencies=["openai_api_key"]
+    metadata={"description": "Embeds an input using LiteLLM with Ollama"},
+    imports=["litellm", "os"]
 )
-def embed_input(input_text: str, model: str = "text-embedding-ada-002", 
+def embed_input(input_text: str, model: str = None, 
                 encoding_format: str = "float", dimensions: int = None, 
                 timeout: int = 600) -> list:
     from litellm import embedding
     import os
 
-    # Set OpenAI API Key from environment variables
-    os.environ['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY')
+    # Get Ollama configuration from environment (inside function for database storage)
+    ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+    
+    # Set Ollama API base URL
+    os.environ['OLLAMA_API_BASE'] = ollama_base_url
+    
+    # Use Ollama embedding model by default (nomic-embed-text is good for local embeddings)
+    if model is None:
+        model = "ollama/nomic-embed-text"
 
     # Prepare the embedding request with optional parameters
     embedding_params = {
         "model": model,
         "input": [input_text],
-        "encoding_format": encoding_format,
         "timeout": timeout
     }
-
-    if dimensions:
-        embedding_params["dimensions"] = dimensions
 
     # Call the LiteLLM embedding function
     response = embedding(**embedding_params)

@@ -2,11 +2,43 @@
 
 from functionz.core.framework import func
 import json
+import re
+
+@func.register_function(
+    metadata={"description": "Extracts JSON from a response that may contain explanatory text before/after the JSON"},
+    imports=["json", "re"]
+)
+def extract_json_from_response(response):
+    """
+    Extract JSON from a response that may contain explanatory text before/after the JSON.
+    Handles both JSON arrays and objects.
+    """
+    # Try to find JSON array in the response - look for the last complete array
+    array_matches = list(re.finditer(r'\[[\s\S]*?\]', response))
+    if array_matches:
+        # Try from the last match first (usually the most complete)
+        for match in reversed(array_matches):
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                continue
+    
+    # Try to find JSON object in the response
+    object_matches = list(re.finditer(r'\{[\s\S]*?\}', response))
+    if object_matches:
+        for match in reversed(object_matches):
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                continue
+    
+    # If no JSON found, try parsing the whole response
+    return json.loads(response)
 
 @func.register_function(
     metadata={"description": "Generates queries based on user description"},
-    dependencies=["gpt_call"],
-    imports=["json"]
+    dependencies=["gpt_call", "extract_json_from_response"],
+    imports=["json", "re"]
 )
 def generate_queries(user_description, X=3, max_retries=3):
     """
@@ -45,13 +77,35 @@ Ensure the queries are diverse, relevant to the user description, and represent 
     for attempt in range(1, max_retries + 1):
         response = gpt_call(prompt)
         try:
-            queries = json.loads(response)
-            if isinstance(queries, list) and len(queries) == X and all(isinstance(q, str) for q in queries):
-                return queries
+            queries = func.extract_json_from_response(response)
+            if isinstance(queries, list):
+                # Handle case where queries might be dicts with 'query' key
+                extracted_queries = []
+                for q in queries:
+                    if isinstance(q, str):
+                        extracted_queries.append(q)
+                    elif isinstance(q, dict) and 'query' in q:
+                        extracted_queries.append(q['query'])
+                    else:
+                        extracted_queries.append(str(q))
+                
+                if len(extracted_queries) >= X:
+                    return extracted_queries[:X]
+                elif len(extracted_queries) > 0:
+                    # Pad with generic queries if we don't have enough
+                    while len(extracted_queries) < X:
+                        extracted_queries.append(f"Help me with a task related to: {user_description}")
+                    return extracted_queries
+                else:
+                    error_message = (
+                        f"Attempt {attempt}: No valid queries extracted. "
+                        f"Response received: {response}"
+                    )
+                    errors.append(error_message)
             else:
                 error_message = (
-                    f"Attempt {attempt}: Invalid JSON structure or incorrect number of queries. "
-                    f"Expected {X} string queries, but received: {response}"
+                    f"Attempt {attempt}: Invalid JSON structure. Expected a list, but received: {type(queries).__name__}. "
+                    f"Response received: {response}"
                 )
                 errors.append(error_message)
         except json.JSONDecodeError as e:

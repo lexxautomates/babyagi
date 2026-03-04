@@ -1,0 +1,17 @@
+[Unit]
+Description=Agent Lightning Store for BabyAGI
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/babyagi
+Environment="PATH=/root/babyagi/venv/bin"
+ExecStart=/root/babyagi/venv/bin/agl store --port 45993
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/lightning_store.log
+StandardError=append:/var/log/lightning_store.log
+
+[Install]
+WantedBy=multi-user.target

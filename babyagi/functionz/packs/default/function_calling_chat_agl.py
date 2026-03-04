@@ -2,21 +2,26 @@ from functionz.core.framework import func
 import json
 import litellm
 import os
+import agentlightning as agl
 
 # Get Ollama configuration from environment
 OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'llama3.2')
+
+# Agent Lightning configuration
+AGL_STORE_URL = os.getenv('AGL_STORE_URL', 'http://localhost:45993')
 
 # Assuming `func` is the registry from your framework
 # and `execute_function_wrapper` is already registered in the database.
 
 @func.register_function(
     metadata={
-        "description": "A chat application that interacts with LiteLLM and executes selected functions from the database."
+        "description": "A chat application that interacts with LiteLLM and executes selected functions from the database. Enhanced with Agent Lightning tracing."
     },
-    imports=["litellm", "json"],
+    imports=["litellm", "json", "agentlightning"],
     dependencies=["get_function_wrapper", "execute_function_wrapper"]
 )
+@agl.rollout
 def chat_with_functions(chat_history, available_function_names) -> str:
     def map_python_type_to_json(python_type: str) -> dict:
         """
@@ -115,58 +120,91 @@ def chat_with_functions(chat_history, available_function_names) -> str:
     # Set Ollama API base URL
     os.environ['OLLAMA_API_BASE'] = OLLAMA_BASE_URL
     
-    # Call LiteLLM's completion API with the user message and available tools
-    response = litellm.completion(
-        model=f"ollama/{OLLAMA_MODEL}",
-        messages=chat_context,
-        tools=tools,
-        tool_choice="auto"
-    )
-
-    # Extract the message from the response
-    response_message = response['choices'][0]['message']
-
-    # Check if the model wants to call any functions
-    tool_calls = response_message.get('tool_calls', [])
-
-    # If there are function calls, execute them
-    if tool_calls:
-        # Append the assistant's message to the chat context
-        chat_context.append(response_message)
-
-        for tool_call in tool_calls:
-            function_name = tool_call['function']['name']
-            function_args = json.loads(tool_call['function']['arguments'])
-            tool_call_id = tool_call['id']  # Extract the tool_call_id
-
-            # Execute the function using execute_function_wrapper
-            try:
-                function_response = execute_function_wrapper(function_name, **function_args)
-            except Exception as e:
-                function_response = f"Error executing function '{function_name}': {str(e)}"
-
-            # Ensure function_response is a string
-            if not isinstance(function_response, str):
-                function_response = json.dumps(function_response)
-
-            # Append the function response to the chat context
-            chat_context.append({
-                "tool_call_id": tool_call_id,  # Include the tool_call_id
-                "role": "tool",  # Use 'tool' as per LiteLLM's protocol
-                "name": function_name,
-                "content": function_response
-            })
-
-        # Call LiteLLM again with the updated context including function responses
-        second_response = litellm.completion(
+    try:
+        # Call LiteLLM's completion API with the user message and available tools
+        response = litellm.completion(
             model=f"ollama/{OLLAMA_MODEL}",
-            messages=chat_context
+            messages=chat_context,
+            tools=tools,
+            tool_choice="auto"
         )
 
-        # Extract and return the assistant's final response
-        assistant_response = second_response['choices'][0]['message']['content']
-        return assistant_response
-    else:
-        # If no functions are called, return the assistant's message directly
-        assistant_response = response_message.get('content', '')
-        return assistant_response
+        # Extract the message from the response
+        response_message = response['choices'][0]['message']
+
+        # Check if the model wants to call any functions
+        tool_calls = response_message.get('tool_calls', [])
+
+        # If there are function calls, execute them
+        if tool_calls:
+            # Append the assistant's message to the chat context
+            chat_context.append(response_message)
+
+            for tool_call in tool_calls:
+                function_name = tool_call['function']['name']
+                function_args = json.loads(tool_call['function']['arguments'])
+                tool_call_id = tool_call['id']  # Extract the tool_call_id
+
+                # Execute the function using execute_function_wrapper
+                try:
+                    function_response = execute_function_wrapper(function_name, **function_args)
+                    # Emit positive reward for successful tool execution
+                    agl.emit_reward(1.0, attributes={
+                        "tool_used": function_name,
+                        "status": "success"
+                    })
+                except Exception as e:
+                    function_response = f"Error executing function '{function_name}': {str(e)}"
+                    # Emit negative reward for failed tool execution
+                    agl.emit_reward(-0.5, attributes={
+                        "tool_used": function_name,
+                        "status": "error",
+                        "error": str(e)
+                    })
+
+                # Ensure function_response is a string
+                if not isinstance(function_response, str):
+                    function_response = json.dumps(function_response)
+
+                # Append the function response to the chat context
+                chat_context.append({
+                    "tool_call_id": tool_call_id,  # Include the tool_call_id
+                    "role": "tool",  # Use 'tool' as per LiteLLM's protocol
+                    "name": function_name,
+                    "content": function_response
+                })
+
+            # Call LiteLLM again with the updated context including function responses
+            second_response = litellm.completion(
+                model=f"ollama/{OLLAMA_MODEL}",
+                messages=chat_context
+            )
+
+            # Extract and return the assistant's final response
+            assistant_response = second_response['choices'][0]['message']['content']
+            
+            # Emit reward for successful completion with tools
+            agl.emit_reward(0.8, attributes={
+                "response_type": "tool_assisted",
+                "tools_count": len(tool_calls)
+            })
+            
+            return assistant_response
+        else:
+            # If no functions are called, return the assistant's message directly
+            assistant_response = response_message.get('content', '')
+            
+            # Emit reward for direct response
+            agl.emit_reward(0.5, attributes={
+                "response_type": "direct"
+            })
+            
+            return assistant_response
+            
+    except Exception as e:
+        # Emit negative reward for overall failure
+        agl.emit_reward(-1.0, attributes={
+            "status": "error",
+            "error": str(e)
+        })
+        raise

@@ -177,3 +177,11 @@ n8n_data/
 # Bot logs
 bot.log
 bot_error.log
+
+# ===========================================
+# Node.js / npm
+# ===========================================
+node_modules/
+.npm-cache/
+.npm/
+*.png
